@@ -60,6 +60,12 @@ return [
             'report' => false,
         ],
 
+
+        'local_public' => [
+            'driver' => 'local',
+            'root' => storage_path('app'),
+        ],
+
     ],
 
     /*

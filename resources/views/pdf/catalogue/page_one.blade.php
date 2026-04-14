@@ -32,7 +32,7 @@
         <span style="font-size: 32px; text-transform: uppercase; font-weight: bold">{!! $formattedDate !!}-{!! $timeFormatted !!}</span>
     </div>
     <div class="" style="position: absolute; left: 400px; top: 640px">
-        <span style="font-size: 62px; text-transform: uppercase; font-weight: bold">{!! $totalCar !!} +</span>
+        <span style="font-size: 62px; text-transform: uppercase; font-weight: bold">{!! $totalCar !!}</span>
     </div>
 
     <img src="{!! $logoBase64 !!}" alt="" height="100%" width="100%">

@@ -2,44 +2,43 @@
 
 namespace App\Jobs;
 
-use App\Services\CatalogGenerator\CatalogGeneratorService;
+use App\Models\Auction;
+use App\Services\AuctionCatalogueService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class GenerateAuctionCatalogJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $timeout = 180; // 3 minutes
+    public $timeout = 1200;
+    public $tries = 1;
+
     protected int $auctionId;
 
-    /**
-     * Create a new job instance.
-     *
-     * @return void
-     */
     public function __construct(int $auctionId)
     {
         $this->auctionId = $auctionId;
     }
 
-    public function getAuctionId(): int
-    {
-        return $this->auctionId;
-    }
-
-    /**
-     * Execute the job.
-     *
-     * @return void
-     */
     public function handle()
     {
-          $catalogGeneratorService = app(CatalogGeneratorService::class);
-        // $catalogGeneratorService->generateCatalogPDF(CatalogGeneratePdfType::AUCTION, $this->auctionId);
-         $catalogGeneratorService->generateAuctionCatalogueNew($this->auctionId);
+        Log::info('JOB START: ' . $this->auctionId);
+
+        $auctionData = Auction::findOrFail($this->auctionId);
+
+        $service = new AuctionCatalogueService();
+
+        $destinationPath = $service->generate($auctionData);
+
+        $auctionData->update([
+            'catalog_url' => $destinationPath
+        ]);
+
+        Log::info('JOB END: ' . $this->auctionId);
     }
 }
