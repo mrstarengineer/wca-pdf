@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use mysql_xdevapi\Exception;
 
 class GenerateAuctionCatalogJob implements ShouldQueue
 {
@@ -29,15 +30,19 @@ class GenerateAuctionCatalogJob implements ShouldQueue
     {
         Log::info('JOB START: ' . $this->auctionId);
 
-        $auctionData = Auction::findOrFail($this->auctionId);
+        try {
+            $auctionData = Auction::findOrFail($this->auctionId);
 
-        $service = new AuctionCatalogueService();
+            $service = new AuctionCatalogueService();
 
-        $destinationPath = $service->generate($auctionData);
+            $destinationPath = $service->generate($auctionData);
 
-        $auctionData->update([
-            'catalog_url' => $destinationPath
-        ]);
+            $auctionData->update([
+                'catalog_url' => $destinationPath
+            ]);
+        } catch (\Exception $e) {
+            Log::info($e->getMessage());
+        }
 
         Log::info('JOB END: ' . $this->auctionId);
     }

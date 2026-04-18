@@ -12,70 +12,145 @@ class AuctionCatalogueService
 {
     public function generate($auctionData)
     {
-        ini_set('memory_limit', '1G');
-        set_time_limit(1200);
+        Log::info('coming here');
+        try {
+            ini_set('memory_limit', '1G');
+            set_time_limit(1200);
 
-        $auctionId = $auctionData->id;
+            $auctionId = $auctionData->id;
 
-        $date = Carbon::parse($auctionData->auction_at);
+            $date = Carbon::parse($auctionData->auction_at);
 
-        $baseData = [
-            'formattedDate' => strtoupper($date->format('d F Y')),
-            'timeFormatted' => $date->format('g:i A'),
-//            'dayOfWeek'     => strtoupper($date->format('l')) . ' Auction',
-            'dayOfWeek'     => 'Sunday Auction',
-            'totalCar'      => $auctionData->auction_vehicles()->count(),
-        ];
+            $baseData = [
+                'formattedDate' => strtoupper($date->format('d F Y')),
+                'timeFormatted' => $date->format('g:i A'),
+                //            'dayOfWeek'     => strtoupper($date->format('l')) . ' Auction',
+                'dayOfWeek'     => 'Sunday Auction',
+                'totalCar'      => $auctionData->auction_vehicles()->count(),
+            ];
 
-        $files = [];
+            $files = [];
 
-        $files[] = $this->generatePdf('pdf.catalogue.page_one', [
-            ...$baseData,
-            'auctionData' => $auctionData
-        ], "tmp_one/$auctionId.pdf");
+            $files[] = $this->generatePdf('pdf.catalogue.page_one', [
+                ...$baseData,
+                'auctionData' => $auctionData
+            ], "tmp_one/$auctionId.pdf");
 
-        $files[] = $this->generatePdf('pdf.catalogue.page_two', [], "tmp_two/$auctionId.pdf");
+            $files[] = $this->generatePdf('pdf.catalogue.page_two', [], "tmp_two/$auctionId.pdf");
 
-        $chunkIndex = 1;
+            $chunkIndex = 1;
 
-        $auctionData->auction_vehicles()
-            ->with('vehicle')
-            ->chunk(50, function ($vehicles) use (&$files, $auctionData, $baseData, $auctionId, &$chunkIndex) {
+//        $auctionData->auction_vehicles()
+//            ->with('vehicle')
+//            ->chunk(50, function ($vehicles) use (&$files, $auctionData, $baseData, $auctionId, &$chunkIndex) {
+//
+//                Log::info("Processing chunk {$chunkIndex}");
+//
+//                $chunkAuction = clone $auctionData;
+//
+//                $chunkAuction->setRelation('auction_vehicles', $vehicles);
+//
+//                $files[] = $this->generatePdf(
+//                    'pdf.catalogue.page_three',
+//                    [
+//                        ...$baseData,
+//                        'auctionData' => $chunkAuction
+//                    ],
+//                    "tmp_chunk_{$auctionId}_{$chunkIndex}.pdf"
+//                );
+//
+//                $chunkIndex++;
+//
+//                unset($vehicles, $chunkAuction);
+//                gc_collect_cycles();
+//            });
 
-                Log::info("Processing chunk {$chunkIndex}");
+            $auctionData->auction_vehicles()
+                ->with('vehicle.vehicle_images')
+                ->chunk(20, function ($vehicles) use (&$files, $auctionData, $baseData, $auctionId, &$chunkIndex) {
 
-                $chunkAuction = clone $auctionData;
+                    Log::info("Processing chunk {$chunkIndex}");
 
-                $chunkAuction->setRelation('auction_vehicles', $vehicles);
+                    $tempDir = storage_path('app/tmp_images');
 
-                $files[] = $this->generatePdf(
-                    'pdf.catalogue.page_three',
-                    [
-                        ...$baseData,
-                        'auctionData' => $chunkAuction
-                    ],
-                    "tmp_chunk_{$auctionId}_{$chunkIndex}.pdf"
-                );
+                    if (!file_exists($tempDir)) {
+                        mkdir($tempDir, 0777, true);
+                    }
 
-                $chunkIndex++;
+                    foreach ($vehicles as $vehicleItem) {
 
-                unset($vehicles, $chunkAuction);
-                gc_collect_cycles();
-            });
+                        $images = data_get($vehicleItem, 'vehicle.vehicle_images', []);
+                        $localImages = [];
 
-        $finalPath = "uploads/auction_catalogs/$auctionId.pdf";
+                        foreach ($images as $index => $img) {
 
-        $this->mergePdfs($files, $finalPath);
+                            $s3Path = data_get($img, 'name');
 
-        $fullPath = storage_path("app/$finalPath");
+                            if (!$s3Path) continue;
 
-        Storage::disk('s3')->put($finalPath, fopen($fullPath, 'r'));
+                            $fileName = md5($s3Path) . '.' . pathinfo($s3Path, PATHINFO_EXTENSION);
+                            $localPath = $tempDir . '/' . $fileName;
 
-        $this->cleanup(array_merge($files, [$fullPath]));
+                            // Download only if not exists
+                            if (!file_exists($localPath)) {
+                                try {
+                                    $content = \Illuminate\Support\Facades\Storage::disk('s3')->get($s3Path);
+                                    file_put_contents($localPath, $content);
+                                } catch (\Exception $e) {
+                                    Log::error("Image download failed: " . $s3Path);
+                                    $localPath = public_path('uploads/images/car_default_thumbnail.jpg');
+                                }
+                            }
 
-        Log::info('PDF DONE: ' . $finalPath);
+                            $localImages[] = $localPath;
 
-        return $finalPath;
+                            if ($index == 4) break; // max 5 images
+                        }
+
+                        // Ensure 5 images
+                        while (count($localImages) < 5) {
+                            $localImages[] = public_path('uploads/images/car_default_thumbnail.jpg');
+                        }
+
+                        // Attach to model (temporary property)
+                        $vehicleItem->vehicle->local_images = $localImages;
+                    }
+
+                    $chunkAuction = clone $auctionData;
+                    $chunkAuction->setRelation('auction_vehicles', $vehicles);
+
+                    $files[] = $this->generatePdf(
+                        'pdf.catalogue.page_three',
+                        [
+                            ...$baseData,
+                            'auctionData' => $chunkAuction
+                        ],
+                        "tmp_chunk_{$auctionId}_{$chunkIndex}.pdf"
+                    );
+
+                    $chunkIndex++;
+
+                    unset($vehicles, $chunkAuction);
+                    gc_collect_cycles();
+                    gc_mem_caches();
+                });
+
+            $finalPath = "uploads/auction_catalogs/$auctionId.pdf";
+
+            $this->mergePdfs($files, $finalPath);
+
+            $fullPath = storage_path("app/$finalPath");
+
+            Storage::disk('s3')->put($finalPath, fopen($fullPath, 'r'));
+
+            $this->cleanup(array_merge($files, [$fullPath]));
+
+            Log::info('PDF DONE: ' . $finalPath);
+
+            return $finalPath;
+        } catch (\Exception $e) {
+            Log::info($e->getMessage());
+        }
     }
 
     private function generatePdf($view, $data, $relativePath)

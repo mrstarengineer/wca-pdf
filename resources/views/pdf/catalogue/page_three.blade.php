@@ -91,21 +91,11 @@
 
   $vehiclePhoto = public_path('uploads/images/car_default_thumbnail.jpg');
 
-  $imageArr = [];
-  foreach(data_get($value, 'vehicle.vehicle_images') as $index => $image) {
-      if(\Illuminate\Support\Facades\Storage::exists(data_get($image, 'name'))) {
-          $imageArr[$index] = \Illuminate\Support\Facades\Storage::url(data_get($image, 'name'));
-      }else {
-         $imageArr[$index] = $vehiclePhoto;
-      }
-      if($index == 4) break;
-  }
 
-  // Ensure at least 5 images
-  for($i = count($imageArr); $i < 5; $i++) {
-      $imageArr[$i] = $vehiclePhoto;
-  }
+@endphp
 
+@php
+    $imageArr = data_get($value, 'vehicle.local_images', []);
 @endphp
     <!-- LOGO -->
 <div class="logo">
@@ -166,11 +156,16 @@
             </td>
 
             <td width="15%" class="qr" style="text-align:right;padding: 0; position: relative">
-                <img
-                    src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://westcarsauctions.com/vehicle-detail/{{ data_get($value, 'vehicle.lot_number') }}"
-                    style="width:90%; height:auto; object-fit:contain;"
-                >
-                <span style="position: absolute; right: 20px; top: -60px; font-size: 18px; text-transform: uppercase; font-weight: bold">View Details</span>
+                @php
+                    $url = 'https://westcarsauctions.com/vehicle-detail/' . data_get($value, 'vehicle.lot_number');
+                @endphp
+
+                <img width="120"
+                     height="120"
+                     src="{{ 'data:image/png;base64,'.base64_encode( \SimpleSoftwareIO\QrCode\Facades\QrCode::format( 'svg' )->size( 150 )->errorCorrection( 'H' )->generate( $url ) ) }}"
+                     alt="QR code">
+
+                <span style="position: absolute; right: 1px; top: -20px; font-size: 18px; text-transform: uppercase; font-weight: bold">View Details</span>
             </td>
         </tr>
     </table>
